@@ -1,0 +1,179 @@
+- name: Install Prerequisites
+  apt: name={{ item }} update_cache=yes state=latest force_apt_get=yes
+  loop: [ 'aptitude' ]
+
+- name: Install  Packages
+  apt: name={{ item }} update_cache=yes state=latest
+  loop: [ 'nginx', 'apt-transport-https', 'ca-certificates', 'curl', 'software-properties-common', 'python3-pip', 'virtualenv', 'python3-setuptools']
+    
+# Nginx Configuration
+- name: Sets Nginx conf file
+  template:
+    src: "files/nginx.conf.j2"
+    dest: "/etc/nginx/sites-available/{{ http_conf }}"
+
+- name: Enables new site
+  file:
+    src: "/etc/nginx/sites-available/{{ http_conf }}"
+    dest: "/etc/nginx/sites-enabled/{{ http_conf }}"
+    state: link
+      #notify: Reload Nginx
+    
+- name: Removes "default" site
+  file:
+    path: "/etc/nginx/sites-enabled/default"
+    state: absent
+      #notify: Reload Nginx
+
+# UFW Configuration
+- name: "UFW - Allow HTTP on port"
+  ufw:
+    rule: allow
+    port: "80"
+     #port: "{{ http_port }}"
+    proto: tcp
+
+- name: "UFW - Allow HTTPS on port"
+  ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+
+#Allow all access from  networks to this host:
+- ufw:
+    rule: allow
+    port: "22"
+    src: "{{ item }}"
+  with_items:
+            #- host1.brights.io
+    - 94.125.125.154/32        
+    - 34.199.54.113/32
+    - 34.232.25.90/32
+    - 34.232.119.183/32
+    - 34.236.25.177/32
+    - 35.171.175.212/32
+    - 52.54.90.98/32
+    - 52.202.195.162/32
+    - 52.203.14.55/32
+    - 35.155.178.254/32
+    - 35.160.177.10/32
+    - 34.216.18.129/32
+    - 178.128.162.234
+    - 31.172.140.160
+
+- name: Add Docker GPG apt Key
+  apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+
+- name: Add Docker Repository
+  apt_repository:
+    repo: deb https://download.docker.com/linux/ubuntu bionic stable
+    state: present
+
+- name: Update apt and install docker-ce
+  apt: update_cache=yes name=docker-ce state=latest
+
+- name: Install Docker Module for Python
+  pip:
+    name: docker
+
+- name: create run.cold.docker.sh
+  shell: echo  "systemctl start docker || true && sleep 5 && docker start \$(docker ps -a | grep \"Dead\|Exited\" | awk '{print \$1}')" > /opt/run.cold.docker.sh
+
+- name: bin/bash                      
+  shell: sed -i '1i#!/bin/bash' /opt/run.cold.docker.sh
+  
+- name: access
+  shell: chmod 777 /opt/run.cold.docker.sh
+
+
+- name: create run.docker.sh
+  shell: echo  "docker start \$(docker ps -a | grep \"Dead\|Exited\" | awk '{print \$1}')" > /opt/run.docker.sh
+  
+- name: bin/bash
+  shell: sed -i '1i#!/bin/bash' /opt/run.docker.sh
+  
+- name: access
+  shell: chmod 777 /opt/run.docker.sh
+  
+- name: clear the docker image script 
+  shell: echo  "docker rmi \$(docker images -qf dangling=true); true" > /opt/clear.docker.sh 
+  
+- name:  bin/bash
+  shell: sed -i '1i#!/bin/bash' /opt/clear.docker.sh
+
+- name: access
+  shell: chmod 777 /opt/clear.docker.sh
+
+- name: Start script clear.docker.sh
+  cron:
+    user: "root"
+    minute: "0"
+    hour: "*/4" 
+    job: "/opt/clear.docker.sh >> /opt/clear.log 2>&1"
+  
+- name: Start script run.docker.sh 
+  cron: 
+    user: "root"
+    minute: "*/5"
+    hour: "0"
+    job: "/opt/run.docker.sh >> /opt/run.log 2>&1"
+
+    #- name: Start script run.cold.docker.sh
+    # cron:              
+    # user: "root"     
+    # minute: "5"      
+    # hour: "0"        
+    # job: "/opt/run.cold.docker.sh >> /opt/run.log 2>&1"
+
+- name: Create swap
+  shell: fallocate -l {{ swap_size }} /swapfile
+
+- name: access
+  shell: chmod 600 /swapfile
+
+- name: marking swap
+  shell: mkswap /swapfile 
+
+- name: activation swap
+  shell: swapon /swapfile
+
+- name: show swap
+  shell: swapon --show
+ 
+- name: backup fstab
+  shell: cp /etc/fstab /etc/fstab.bak
+
+- name: fix fstab
+  shell: echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
+
+
+
+#- name: Create 8 Gb swap
+#  command: dd if=/dev/zero of={{ /swapfile }} bs=256M count={{ 32 }}
+ #          creates={{ /swapfile }}
+
+
+#- name: Change swap file permissions
+#  file: path={{ /swapfile }}
+ #         owner=root
+  #        group=root
+   #       mode=0600
+#- name: "Check swap file type"
+ #   command: file {{ /swapfile }}
+ #   register: swapfile
+
+#handlers:
+- name: Restart Nginx
+  service:
+    name: nginx
+    state: reloaded
+  
+- name: Restart Nginx
+  service:
+    name: nginx
+    state: restarted
+
+#- name: enable ufw
+#  shell: ufw enable

@@ -1,0 +1,27 @@
+---
+- hosts: all
+  become: true
+  name: SetupWebServerOneContainerStage
+  remote_user: root
+  roles:
+    - role: SetupWebServerOneContainerStage
+  vars_prompt:
+  - name:  http_host 
+    prompt: "Enter host: "
+    private: no
+  - name: http_conf 
+    prompt: "Enter conf name: "
+    default: "deb10lxc"
+    private: no
+  - name:  http_port
+    prompt: "Enter port_nginx: "
+    private: no
+  - name:  swap_size 
+    prompt: "Enter swap_size: "
+    private: no
+  #name: SetupWebServerOneContainerStage 
+  #host: all
+  #remote_user: root 
+ # roles:
+  #  - role: SetupWebServerOneContainerStage
+    
